@@ -37,6 +37,9 @@ import { Textarea } from '@/components/ui/textarea'
 export default function Home() {
   const [activeTab, setActiveTab] = useState('projects')
   const [inputMessage, setInputMessage] = useState('')
+  const [workflowMessage, setWorkflowMessage] = useState('')
+  const [workflowExecuting, setWorkflowExecuting] = useState(false)
+  const [workflowResult, setWorkflowResult] = useState<any>(null)
 
   const projects = [
     {
@@ -84,6 +87,70 @@ export default function Home() {
     { action: 'Alert triggered', time: '1 hour ago', type: 'warning' }
   ]
 
+  const executeWorkflow = async () => {
+    setWorkflowExecuting(true)
+    setWorkflowResult(null)
+
+    try {
+      const workflow = {
+        id: 'wf-001',
+        name: 'Support Ticket Workflow',
+        description: 'Multi-agent workflow for handling support tickets',
+        agents: [
+          {
+            id: 'agent-1',
+            name: 'Ticket Analyzer',
+            description: 'Analyzes incoming support tickets',
+            agent_id: process.env.NEXT_PUBLIC_AGENT_ID || '',
+            type: 'specialist' as const,
+            capabilities: ['ticket_analysis', 'sentiment_detection']
+          }
+        ],
+        nodes: [
+          {
+            id: 'start',
+            type: 'agent' as const,
+            agent: {
+              id: 'agent-1',
+              name: 'Ticket Analyzer',
+              description: 'Analyzes incoming support tickets',
+              agent_id: process.env.NEXT_PUBLIC_AGENT_ID || '',
+              type: 'specialist' as const,
+              capabilities: ['ticket_analysis', 'sentiment_detection']
+            },
+            config: {},
+            nextNodes: []
+          }
+        ],
+        startNode: 'start',
+        created: new Date().toISOString(),
+        updated: new Date().toISOString()
+      }
+
+      const response = await fetch('/api/workflow/execute', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workflow,
+          message: workflowMessage,
+          user_id: 'user-demo'
+        }),
+      })
+
+      const data = await response.json()
+      setWorkflowResult(data)
+    } catch (error) {
+      setWorkflowResult({
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to execute workflow'
+      })
+    } finally {
+      setWorkflowExecuting(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-[#fcfbf8] dark:bg-[#1c1c1c]">
       {/* Sidebar Navigation */}
@@ -122,6 +189,18 @@ export default function Home() {
             >
               <FaRobot className="w-5 h-5" />
               <span className="font-medium">AI Assistant</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('workflows')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+                activeTab === 'workflows'
+                  ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400'
+                  : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}
+            >
+              <FaNetworkWired className="w-5 h-5" />
+              <span className="font-medium">Workflows</span>
             </button>
 
             <button
@@ -371,6 +450,195 @@ export default function Home() {
                   <p className="text-xs text-gray-500 mt-2">Attach up to 10 files of any type</p>
                 </div>
               </Card>
+            </div>
+          )}
+
+          {activeTab === 'workflows' && (
+            <div>
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Agentic Workflows</h2>
+                <p className="text-gray-600 dark:text-gray-400">Orchestrate multi-agent workflows and enterprise integrations</p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                <Card className="bg-white dark:bg-[#2a2a2a] border-gray-200 dark:border-gray-800">
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white">
+                        <FaNetworkWired className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Active Workflows</p>
+                        <p className="text-xl font-bold text-gray-900 dark:text-white">3</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white dark:bg-[#2a2a2a] border-gray-200 dark:border-gray-800">
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white">
+                        <FaRobot className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Total Agents</p>
+                        <p className="text-xl font-bold text-gray-900 dark:text-white">8</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white dark:bg-[#2a2a2a] border-gray-200 dark:border-gray-800">
+                  <CardContent className="p-6">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center text-white">
+                        <FaCheckCircle className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600 dark:text-gray-400">Executions Today</p>
+                        <p className="text-xl font-bold text-gray-900 dark:text-white">24</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card className="bg-white dark:bg-[#2a2a2a] border-gray-200 dark:border-gray-800">
+                  <CardHeader>
+                    <CardTitle className="text-gray-900 dark:text-white">Execute Workflow</CardTitle>
+                    <CardDescription className="text-gray-600 dark:text-gray-400">Test your multi-agent workflow</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="text-sm font-medium text-gray-900 dark:text-white block mb-2">
+                          Workflow Message
+                        </label>
+                        <Textarea
+                          value={workflowMessage}
+                          onChange={(e) => setWorkflowMessage(e.target.value)}
+                          placeholder="Enter your task or request..."
+                          className="resize-none bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                          rows={4}
+                        />
+                      </div>
+                      <Button
+                        onClick={executeWorkflow}
+                        disabled={workflowExecuting || !workflowMessage.trim()}
+                        className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0"
+                      >
+                        {workflowExecuting ? (
+                          <>
+                            <HiLightningBolt className="mr-2 animate-spin" />
+                            Executing...
+                          </>
+                        ) : (
+                          <>
+                            <HiLightningBolt className="mr-2" />
+                            Execute Workflow
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white dark:bg-[#2a2a2a] border-gray-200 dark:border-gray-800">
+                  <CardHeader>
+                    <CardTitle className="text-gray-900 dark:text-white">Workflow Result</CardTitle>
+                    <CardDescription className="text-gray-600 dark:text-gray-400">Execution status and response</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {!workflowResult ? (
+                      <div className="text-center py-8 text-gray-400">
+                        <FaNetworkWired className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p className="text-sm">No execution yet</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Badge className={`${
+                            workflowResult.success
+                              ? 'bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400'
+                              : 'bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                          }`}>
+                            {workflowResult.success ? 'Success' : 'Failed'}
+                          </Badge>
+                          {workflowResult.execution?.status && (
+                            <Badge variant="outline">
+                              {workflowResult.execution.status}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 max-h-64 overflow-y-auto">
+                          <pre className="text-xs text-gray-900 dark:text-gray-100 whitespace-pre-wrap">
+                            {JSON.stringify(workflowResult, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="mt-6">
+                <Card className="bg-white dark:bg-[#2a2a2a] border-gray-200 dark:border-gray-800">
+                  <CardHeader>
+                    <CardTitle className="text-gray-900 dark:text-white">Enterprise Integrations</CardTitle>
+                    <CardDescription className="text-gray-600 dark:text-gray-400">Connected services and APIs</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="flex items-center justify-between p-4 rounded-lg border border-gray-200 dark:border-gray-800">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-red-100 dark:bg-red-900/20 flex items-center justify-center">
+                            <FaSlack className="w-5 h-5 text-red-600 dark:text-red-400" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-white">Gmail</p>
+                            <p className="text-xs text-gray-500">Email automation</p>
+                          </div>
+                        </div>
+                        <Badge className="bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400">
+                          Ready
+                        </Badge>
+                      </div>
+
+                      <div className="flex items-center justify-between p-4 rounded-lg border border-gray-200 dark:border-gray-800">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/20 flex items-center justify-center">
+                            <FaSlack className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-white">Slack</p>
+                            <p className="text-xs text-gray-500">Team messaging</p>
+                          </div>
+                        </div>
+                        <Badge className="bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400">
+                          Ready
+                        </Badge>
+                      </div>
+
+                      <div className="flex items-center justify-between p-4 rounded-lg border border-gray-200 dark:border-gray-800">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                            <FaGithub className="w-5 h-5 text-gray-900 dark:text-white" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-white">GitHub</p>
+                            <p className="text-xs text-gray-500">Code management</p>
+                          </div>
+                        </div>
+                        <Badge className="bg-green-100 dark:bg-green-900/20 text-green-600 dark:text-green-400">
+                          Ready
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           )}
 
