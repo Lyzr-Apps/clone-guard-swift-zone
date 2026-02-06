@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   FaShieldAlt,
   FaRobot,
@@ -33,6 +33,7 @@ import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import WorkflowMonitor from '@/components/WorkflowMonitor'
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('projects')
@@ -40,6 +41,23 @@ export default function Home() {
   const [workflowMessage, setWorkflowMessage] = useState('')
   const [workflowExecuting, setWorkflowExecuting] = useState(false)
   const [workflowResult, setWorkflowResult] = useState<any>(null)
+  const [chatMessages, setChatMessages] = useState<Array<{role: 'user' | 'assistant', content: string, timestamp: string}>>([
+    {
+      role: 'assistant',
+      content: 'Hello! I\'m your AI security assistant. I can help you with threat detection, security analysis, and project management. How can I assist you today?',
+      timestamp: new Date().toISOString()
+    }
+  ])
+  const [chatLoading, setChatLoading] = useState(false)
+  const [workflowExecutionId, setWorkflowExecutionId] = useState<string | null>(null)
+  const chatContainerRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll chat to bottom when new messages arrive
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight
+    }
+  }, [chatMessages])
 
   const projects = [
     {
@@ -87,9 +105,65 @@ export default function Home() {
     { action: 'Alert triggered', time: '1 hour ago', type: 'warning' }
   ]
 
+  const sendChatMessage = async () => {
+    if (!inputMessage.trim() || chatLoading) return
+
+    const userMessage = {
+      role: 'user' as const,
+      content: inputMessage,
+      timestamp: new Date().toISOString()
+    }
+
+    setChatMessages(prev => [...prev, userMessage])
+    setInputMessage('')
+    setChatLoading(true)
+
+    try {
+      const response = await fetch('/api/agent/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: userMessage.content,
+          user_id: 'user-demo',
+          session_id: 'session-' + Date.now()
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        const assistantMessage = {
+          role: 'assistant' as const,
+          content: data.response || 'I processed your request successfully.',
+          timestamp: new Date().toISOString()
+        }
+        setChatMessages(prev => [...prev, assistantMessage])
+      } else {
+        const errorMessage = {
+          role: 'assistant' as const,
+          content: 'I apologize, but I encountered an error processing your request. Please try again.',
+          timestamp: new Date().toISOString()
+        }
+        setChatMessages(prev => [...prev, errorMessage])
+      }
+    } catch (error) {
+      const errorMessage = {
+        role: 'assistant' as const,
+        content: 'I apologize, but I\'m having trouble connecting right now. Please try again.',
+        timestamp: new Date().toISOString()
+      }
+      setChatMessages(prev => [...prev, errorMessage])
+    } finally {
+      setChatLoading(false)
+    }
+  }
+
   const executeWorkflow = async () => {
     setWorkflowExecuting(true)
     setWorkflowResult(null)
+    setWorkflowExecutionId(null)
 
     try {
       const workflow = {
@@ -141,6 +215,11 @@ export default function Home() {
 
       const data = await response.json()
       setWorkflowResult(data)
+
+      // Set execution ID for real-time monitoring
+      if (data.execution?.id) {
+        setWorkflowExecutionId(data.execution.id)
+      }
     } catch (error) {
       setWorkflowResult({
         success: false,
@@ -393,23 +472,55 @@ export default function Home() {
             <div className="max-w-5xl mx-auto">
               <div className="mb-6">
                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">AI Assistant</h2>
-                <p className="text-gray-600 dark:text-gray-400">Chat with your AI-powered security assistant</p>
+                <p className="text-gray-600 dark:text-gray-400">Chat with your AI-powered security assistant in real-time</p>
               </div>
 
               <Card className="bg-white dark:bg-[#2a2a2a] border-gray-200 dark:border-gray-800 h-[calc(100vh-300px)] flex flex-col">
-                <CardContent className="flex-1 p-6 overflow-y-auto">
+                <CardContent ref={chatContainerRef} className="flex-1 p-6 overflow-y-auto">
                   <div className="space-y-4">
-                    <div className="flex gap-3">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white flex-shrink-0">
-                        <FaRobot />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">AI Assistant</p>
-                        <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4">
-                          <p className="text-gray-900 dark:text-gray-100">Hello! I'm your AI security assistant. I can help you with threat detection, security analysis, and project management. How can I assist you today?</p>
+                    {chatMessages.map((msg, idx) => (
+                      <div key={idx} className="flex gap-3">
+                        {msg.role === 'assistant' && (
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white flex-shrink-0">
+                            <FaRobot />
+                          </div>
+                        )}
+                        {msg.role === 'user' && (
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center text-white font-semibold flex-shrink-0">
+                            U
+                          </div>
+                        )}
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">
+                            {msg.role === 'assistant' ? 'AI Assistant' : 'You'}
+                          </p>
+                          <div className={`${
+                            msg.role === 'assistant'
+                              ? 'bg-gray-100 dark:bg-gray-800'
+                              : 'bg-blue-50 dark:bg-blue-900/20'
+                          } rounded-lg p-4`}>
+                            <p className="text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{msg.content}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    ))}
+                    {chatLoading && (
+                      <div className="flex gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white flex-shrink-0">
+                          <FaRobot />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white mb-1">AI Assistant</p>
+                          <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4">
+                            <div className="flex gap-2">
+                              <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+                              <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                              <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
 
@@ -430,9 +541,16 @@ export default function Home() {
                       <Textarea
                         value={inputMessage}
                         onChange={(e) => setInputMessage(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            sendChatMessage()
+                          }
+                        }}
                         placeholder="Ask me anything about security, threats, or your projects..."
                         className="resize-none pr-24 bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
                         rows={3}
+                        disabled={chatLoading}
                       />
                       <div className="absolute right-2 bottom-2 flex gap-1">
                         <Button size="sm" variant="ghost" className="h-8 w-8 p-0">
@@ -443,11 +561,15 @@ export default function Home() {
                         </Button>
                       </div>
                     </div>
-                    <Button className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 h-auto px-6">
-                      <FaPaperPlane />
+                    <Button
+                      onClick={sendChatMessage}
+                      disabled={chatLoading || !inputMessage.trim()}
+                      className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-0 h-auto px-6"
+                    >
+                      {chatLoading ? <HiLightningBolt className="animate-spin" /> : <FaPaperPlane />}
                     </Button>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">Attach up to 10 files of any type</p>
+                  <p className="text-xs text-gray-500 mt-2">Press Enter to send, Shift+Enter for new line</p>
                 </div>
               </Card>
             </div>
@@ -582,6 +704,27 @@ export default function Home() {
                   </CardContent>
                 </Card>
               </div>
+
+              {workflowExecutionId && (
+                <div className="mt-6">
+                  <Card className="bg-white dark:bg-[#2a2a2a] border-gray-200 dark:border-gray-800">
+                    <CardHeader>
+                      <CardTitle className="text-gray-900 dark:text-white">Real-Time Workflow Monitor</CardTitle>
+                      <CardDescription className="text-gray-600 dark:text-gray-400">
+                        Live execution updates for workflow: {workflowExecutionId}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <WorkflowMonitor
+                        executionId={workflowExecutionId}
+                        onComplete={(success) => {
+                          console.log('Workflow completed:', success)
+                        }}
+                      />
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
 
               <div className="mt-6">
                 <Card className="bg-white dark:bg-[#2a2a2a] border-gray-200 dark:border-gray-800">
