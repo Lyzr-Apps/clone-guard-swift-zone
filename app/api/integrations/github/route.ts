@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getAuthHeaders } from '@/lib/oauth/tokenManager'
 
 /**
  * GitHub Integration API
@@ -7,10 +8,25 @@ import { NextRequest, NextResponse } from 'next/server'
  * OAuth is already handled by the agent system
  */
 
+const GITHUB_API_BASE = 'https://api.github.com'
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { action, params } = body
+    const { action, params, context } = body
+    const userId = context?.user_id || 'default'
+
+    // Check for OAuth token
+    const authHeaders = getAuthHeaders(userId, 'github')
+    if (!authHeaders && process.env.NODE_ENV === 'production') {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'GitHub OAuth token required. Please connect your GitHub account.',
+        },
+        { status: 401 }
+      )
+    }
 
     switch (action) {
       case 'create_issue':

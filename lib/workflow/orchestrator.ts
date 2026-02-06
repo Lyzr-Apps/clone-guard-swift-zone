@@ -22,6 +22,28 @@ export class WorkflowOrchestrator {
   }
 
   /**
+   * Send real-time update
+   */
+  private async sendUpdate(executionId: string, type: string, data: any): Promise<void> {
+    try {
+      await fetch('/api/workflows/monitor', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          execution_id: executionId,
+          type,
+          data,
+        }),
+      })
+    } catch (error) {
+      // Don't fail workflow if monitoring fails
+      console.error('Failed to send monitoring update:', error)
+    }
+  }
+
+  /**
    * Execute the workflow
    */
   async execute(initialMessage: string): Promise<WorkflowExecution> {
@@ -33,6 +55,13 @@ export class WorkflowOrchestrator {
       results: {},
       started: new Date().toISOString(),
     }
+
+    // Send workflow started update
+    await this.sendUpdate(execution.id, 'workflow_started', {
+      workflow_id: this.workflow.id,
+      workflow_name: this.workflow.name,
+      message: initialMessage,
+    })
 
     try {
       // Add initial message to context
@@ -55,9 +84,24 @@ export class WorkflowOrchestrator {
 
         execution.current_node = currentNodeId
 
+        // Send node execution started update
+        await this.sendUpdate(execution.id, 'node_started', {
+          node_id: node.id,
+          node_type: node.type,
+          agent_name: node.agent?.name,
+        })
+
         // Execute the node
         const nodeResult = await this.executeNode(node)
         execution.results[currentNodeId] = nodeResult
+
+        // Send node execution completed update
+        await this.sendUpdate(execution.id, 'node_completed', {
+          node_id: node.id,
+          node_type: node.type,
+          agent_name: node.agent?.name,
+          result: nodeResult,
+        })
 
         // Determine next node
         currentNodeId = this.getNextNode(node, nodeResult)
@@ -67,11 +111,24 @@ export class WorkflowOrchestrator {
       execution.status = 'completed'
       execution.completed = new Date().toISOString()
 
+      // Send workflow completed update
+      await this.sendUpdate(execution.id, 'workflow_completed', {
+        workflow_id: this.workflow.id,
+        results: execution.results,
+      })
+
       return execution
     } catch (error) {
       execution.status = 'failed'
       execution.error = error instanceof Error ? error.message : 'Unknown error'
       execution.completed = new Date().toISOString()
+
+      // Send workflow failed update
+      await this.sendUpdate(execution.id, 'workflow_failed', {
+        workflow_id: this.workflow.id,
+        error: execution.error,
+      })
+
       return execution
     }
   }
@@ -323,5 +380,21 @@ export async function executeWorkflow(
   }
 
   const orchestrator = new WorkflowOrchestrator(workflow, context)
-  return await orchestrator.execute(message)
+  const execution = await orchestrator.execute(message)
+
+  // Save execution to history
+  try {
+    await fetch('/api/workflows/executions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ execution }),
+    })
+  } catch (error) {
+    console.error('Failed to save execution history:', error)
+    // Don't fail the workflow if history save fails
+  }
+
+  return execution
 }
